@@ -14,7 +14,8 @@ import json
 import logging
 import os
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 log = logging.getLogger(__name__)
 
@@ -31,25 +32,25 @@ Respond with JSON only:
 {{"success": 0 or 1, "reasoning": "one sentence"}}
 """
 
-_model: genai.GenerativeModel | None = None
+_client: genai.Client | None = None
 
 
-def _get_model() -> genai.GenerativeModel:
-    global _model
-    if _model is None:
+def _get_client() -> genai.Client:
+    global _client
+    if _client is None:
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
             raise EnvironmentError("GOOGLE_API_KEY not set")
-        genai.configure(api_key=api_key)
-        _model = genai.GenerativeModel(_MODEL)
-    return _model
+        _client = genai.Client(api_key=api_key)
+    return _client
 
 
 def _call_model(prompt_text: str) -> dict:
-    model = _get_model()
-    response = model.generate_content(
-        prompt_text,
-        generation_config=genai.types.GenerationConfig(
+    client = _get_client()
+    response = client.models.generate_content(
+        model=_MODEL,
+        contents=prompt_text,
+        config=types.GenerateContentConfig(
             response_mime_type="application/json",
         ),
     )

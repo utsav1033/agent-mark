@@ -16,52 +16,34 @@ import os
 import time
 
 import anthropic
-from composio_anthropic import Action, ComposioToolSet
 
 from adapters.base import Agent, Trajectory, ToolCall
 
 log = logging.getLogger(__name__)
 
-# Curated read-only actions for the 4 supported toolkits.
-# Exact Composio action names — verified against composio-core action registry.
-_GMAIL_ACTIONS = [
-    Action.GMAIL_FETCH_EMAILS,
-    Action.GMAIL_LIST_LABELS,
-    Action.GMAIL_GET_ATTACHMENT,
-]
-
-_GITHUB_ACTIONS = [
-    Action.GITHUB_LIST_REPOS_FOR_AUTHENTICATED_USER,
-    Action.GITHUB_LIST_REPOSITORY_ISSUES,
-    Action.GITHUB_GET_AN_ISSUE,
-    Action.GITHUB_LIST_PULL_REQUESTS,
-    Action.GITHUB_GET_A_REPOSITORY,
-]
-
-_LINEAR_ACTIONS = [
-    Action.LINEAR_GET_TEAMS,
-    Action.LINEAR_LIST_ISSUES,
-    Action.LINEAR_GET_ISSUE,
-]
-
-_SLACK_ACTIONS = [
-    Action.SLACK_LIST_ALL_SLACK_CHANNEL,
-    Action.SLACK_FETCH_CONVERSATION_HISTORY,
-    Action.SLACK_SEARCH_MESSAGES,
-]
-
-_TOOLKIT_ACTIONS: dict[str, list] = {
-    "gmail": _GMAIL_ACTIONS,
-    "github": _GITHUB_ACTIONS,
-    "linear": _LINEAR_ACTIONS,
-    "slack": _SLACK_ACTIONS,
+_TOOLKIT_APPS: dict[str, list[str]] = {
+    "gmail": ["gmail"],
+    "github": ["github"],
+    "linear": ["linear"],
+    "slack": ["slack"],
 }
 
-_ALL_ACTIONS = _GMAIL_ACTIONS + _GITHUB_ACTIONS + _LINEAR_ACTIONS + _SLACK_ACTIONS
+
+def _import_composio():
+    """Lazy import so the harness doesn't crash when using --adapter trustclaw."""
+    try:
+        from composio import Composio
+        from composio_anthropic import AnthropicProvider
+        return Composio, AnthropicProvider
+    except ImportError as exc:
+        raise ImportError(
+            "composio and composio-anthropic are required for the simple adapter. "
+            "Install them with: pip install composio composio-anthropic"
+        ) from exc
 
 
 class SimpleAgent:
-    """Agentic loop: Anthropic model + Composio tool execution."""
+    """Agentic loop: Anthropic model + Composio tool execution (new SDK)."""
 
     def __init__(
         self,
@@ -69,22 +51,22 @@ class SimpleAgent:
         max_iter: int = 10,
         toolkit: str | None = None,
     ) -> None:
+        Composio, AnthropicProvider = _import_composio()
         self.client = anthropic.Anthropic(
             api_key=os.environ["ANTHROPIC_API_KEY"],
             base_url=os.environ.get("ANTHROPIC_BASE_URL"),
         )
-        self.toolset = ComposioToolSet()
+        self._provider = AnthropicProvider()
+        self._composio = Composio(provider=self._provider)
+        self._apps = _TOOLKIT_APPS.get(toolkit, []) if toolkit else list(_TOOLKIT_APPS.keys())
         self.model = model
         self.max_iter = max_iter
-        self._actions = (
-            _TOOLKIT_ACTIONS.get(toolkit, _ALL_ACTIONS) if toolkit else _ALL_ACTIONS
-        )
 
     def _load_tools(self) -> list:
         try:
-            return self.toolset.get_tools(actions=self._actions)
+            return self._composio.tools.get(apps=self._apps)
         except Exception as exc:
-            log.warning("Failed to load some tools: %s", exc)
+            log.warning("Failed to load tools: %s", exc)
             return []
 
     def run(self, prompt: str) -> Trajectory:
@@ -109,7 +91,6 @@ class SimpleAgent:
             input_tokens += response.usage.input_tokens
             output_tokens += response.usage.output_tokens
 
-            # Extract text from response
             text_blocks = [b for b in response.content if hasattr(b, "text")]
             if text_blocks:
                 final_response = text_blocks[-1].text
@@ -121,19 +102,19 @@ class SimpleAgent:
             if not tool_use_blocks:
                 break
 
-            # Append assistant turn
             messages.append({"role": "assistant", "content": response.content})
 
             tool_results = []
             for tu in tool_use_blocks:
                 tc_start = time.time()
                 try:
-                    raw = self.toolset.execute_action(
-                        action=tu.name,
-                        params=tu.input,
+                    execution = self._provider.execute_tool_call(
+                        user_id="default",
+                        tool_call=tu,
                     )
                     result_dict: dict | None = (
-                        raw if isinstance(raw, dict) else {"output": str(raw)}
+                        execution.data if isinstance(execution.data, dict)
+                        else {"output": str(execution.data)}
                     )
                 except Exception as exc:
                     log.warning("Tool %s failed: %s", tu.name, exc)

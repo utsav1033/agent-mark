@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(pip uninstall composio-core -y 2>&1)"
+    ]
+  }
+}
