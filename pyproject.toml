@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agent-mark"
+version = "0.1.0"
+description = "Framework-agnostic evaluation harness for tool-using AI agents"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+    "pydantic>=2.0",
+    "google-generativeai>=0.8",
+    "httpx>=0.27",
+    "composio-core>=0.6",
+    "composio-anthropic>=0.6",
+    "anthropic>=0.40",
+    "langgraph>=0.2",
+]
+
+[project.scripts]
+agent-mark = "run:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["adapters", "harness"]

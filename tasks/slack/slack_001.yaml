@@ -1,0 +1,11 @@
+id: slack_001
+toolkit: slack
+difficulty: easy
+prompt: "List all Slack channels I have access to. How many are there?"
+expected_tools:
+  - SLACK_LIST_ALL_SLACK_CHANNEL
+min_tool_calls: 1
+max_tool_calls: 2
+success_rubric: |
+  The response should list Slack channel names and state the total count. Even a partial
+  list (top 10-20) is acceptable for success as long as the agent fetched real data.

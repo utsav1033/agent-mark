@@ -1,0 +1,11 @@
+id: linear_001
+toolkit: linear
+difficulty: easy
+prompt: "List all teams in my Linear workspace. What are their names and IDs?"
+expected_tools:
+  - LINEAR_GET_TEAMS
+min_tool_calls: 1
+max_tool_calls: 2
+success_rubric: |
+  The response should list the Linear teams in the user's workspace with their names.
+  Team IDs are a bonus. If there are no teams (empty workspace), the agent should say so.

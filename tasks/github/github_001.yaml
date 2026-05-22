@@ -1,0 +1,12 @@
+id: github_001
+toolkit: github
+difficulty: easy
+prompt: "List my GitHub repositories. How many do I have and what are the most recent ones?"
+expected_tools:
+  - GITHUB_LIST_REPOS_FOR_AUTHENTICATED_USER
+min_tool_calls: 1
+max_tool_calls: 2
+success_rubric: |
+  The response should list GitHub repositories belonging to the authenticated user,
+  including at least the repository names and ideally updated-at dates. A total count
+  or mention of the most recent repos is required for full credit.

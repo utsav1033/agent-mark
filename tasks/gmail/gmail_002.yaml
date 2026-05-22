@@ -1,0 +1,11 @@
+id: gmail_002
+toolkit: gmail
+difficulty: easy
+prompt: "Fetch the 5 most recent emails in my inbox and list their subjects and senders."
+expected_tools:
+  - GMAIL_FETCH_EMAILS
+min_tool_calls: 1
+max_tool_calls: 2
+success_rubric: |
+  The response should list at least 3 recent emails with their subject lines and sender
+  addresses or names. The exact count may vary if the inbox has fewer messages.

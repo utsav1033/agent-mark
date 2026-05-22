@@ -1,0 +1,12 @@
+id: github_002
+toolkit: github
+difficulty: easy
+prompt: "Get details about the repository 'composiohq/composio' — description, stars, and open issues count."
+expected_tools:
+  - GITHUB_GET_A_REPOSITORY
+min_tool_calls: 1
+max_tool_calls: 2
+success_rubric: |
+  The response should include the repository description, star count, and open issues count
+  for composiohq/composio. All three fields must be present for full success; two out of
+  three is partial credit (still success=1 if the agent fetched real data).

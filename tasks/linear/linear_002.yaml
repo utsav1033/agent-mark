@@ -1,0 +1,11 @@
+id: linear_002
+toolkit: linear
+difficulty: easy
+prompt: "Fetch the 5 most recent issues in Linear. List their titles, status, and assignees."
+expected_tools:
+  - LINEAR_LIST_ISSUES
+min_tool_calls: 1
+max_tool_calls: 2
+success_rubric: |
+  The response should list up to 5 recent Linear issues with their titles and statuses.
+  Assignee names are a bonus. The response must reflect actual fetched data.

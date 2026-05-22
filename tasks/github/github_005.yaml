@@ -1,0 +1,16 @@
+id: github_005
+toolkit: github
+difficulty: hard
+prompt: >
+  Find the most recently updated issue in 'composiohq/composio' that is labeled 'bug'.
+  Describe what the bug is about and who reported it.
+  If there are no bug-labeled issues, check the 5 most recent issues for anything bug-related.
+expected_tools:
+  - GITHUB_LIST_REPOSITORY_ISSUES
+  - GITHUB_GET_AN_ISSUE
+min_tool_calls: 1
+max_tool_calls: 5
+success_rubric: |
+  The response should identify a specific issue (with title and reporter) that is labeled
+  'bug' or is clearly bug-related. The agent should have fetched actual issue data, not
+  fabricated it. If no bug issues exist, the agent should state this clearly.

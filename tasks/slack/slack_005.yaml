@@ -1,0 +1,17 @@
+id: slack_005
+toolkit: slack
+difficulty: hard
+prompt: >
+  Search Slack for any messages mentioning 'outage', 'incident', or 'down' from the last 7 days.
+  For each result, note the channel, sender, and timestamp.
+  Summarize whether there are any active or recent incidents based on what you find.
+expected_tools:
+  - SLACK_SEARCH_MESSAGES
+  - SLACK_FETCH_CONVERSATION_HISTORY
+min_tool_calls: 1
+max_tool_calls: 6
+success_rubric: |
+  The response should list Slack messages mentioning outage/incident/down with channel and
+  sender information, or clearly state that no such messages were found. The agent should
+  provide a concise incident summary (even if it's "no recent incidents"). Multi-step
+  search + history fetch is a bonus but not required.

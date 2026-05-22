@@ -1,0 +1,12 @@
+id: slack_002
+toolkit: slack
+difficulty: easy
+prompt: "Find the #general channel in Slack and tell me how many members it has."
+expected_tools:
+  - SLACK_LIST_ALL_SLACK_CHANNEL
+min_tool_calls: 1
+max_tool_calls: 3
+success_rubric: |
+  The response should identify the #general channel and state its member count. If the
+  workspace uses a different name for the main channel, the agent should identify the
+  closest equivalent. If #general does not exist, the agent should say so.
