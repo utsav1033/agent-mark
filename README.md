@@ -24,6 +24,9 @@ with this harness.
 **4 / 5 (80%).** The hard task failed because the agent found the right data but truncated
 its output — the judge penalized an incomplete list.
 
+> Don't have TrustClaw running? See [Quickstart](#quickstart-composio-tools-via-simplepy)
+> to run the same tasks against Composio tools directly — no local server needed.
+
 ---
 
 ## Works for any agent

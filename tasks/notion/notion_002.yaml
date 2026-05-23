@@ -1,0 +1,11 @@
+id: notion_002
+toolkit: notion
+difficulty: easy
+prompt: "List all databases in my Notion workspace."
+expected_tools:
+  - NOTION_LIST_DATABASES
+min_tool_calls: 1
+max_tool_calls: 2
+success_rubric: |
+  Response should list Notion databases from the user's workspace, including their
+  titles. If no databases exist, the response should say so explicitly.
