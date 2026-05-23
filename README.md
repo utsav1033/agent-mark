@@ -3,8 +3,8 @@
 benchmark harness for tool-using AI agents, built to evaluate composio-powered agents in the real world.
 
 ---
+<img width="896" height="404" alt="ezgif-5ef3e2e1fb8d80a4" src="https://github.com/user-attachments/assets/a6284cbf-413d-42d5-864c-49fbba320472" />
 
-https://github.com/user-attachments/assets/44098a55-0b77-48af-b464-145b29b03e8a
 ---
 
 ## Results
