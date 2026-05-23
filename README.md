@@ -4,7 +4,7 @@ benchmark harness for tool-using AI agents, built to evaluate composio-powered a
 
 ---
 
-<!-- Demo GIF here — record with OBS: python run.py --adapter trustclaw --toolkit gmail -->
+<img width="800" height="360" alt="am2-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/d25f405a-a625-4a03-9dc9-e63d8ffcc1bd" />
 
 ---
 
