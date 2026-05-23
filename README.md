@@ -4,8 +4,7 @@ benchmark harness for tool-using AI agents, built to evaluate composio-powered a
 
 ---
 
-<img width="800" height="360" alt="am2-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/d25f405a-a625-4a03-9dc9-e63d8ffcc1bd" />
-
+https://github.com/user-attachments/assets/44098a55-0b77-48af-b464-145b29b03e8a
 ---
 
 ## Results
