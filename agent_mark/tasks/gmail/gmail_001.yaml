@@ -1,0 +1,11 @@
+id: gmail_001
+toolkit: gmail
+difficulty: easy
+prompt: "List my email labels and tell me how many I have."
+expected_tools:
+  - GMAIL_LIST_LABELS
+min_tool_calls: 1
+max_tool_calls: 2
+success_rubric: |
+  The response should list the user's Gmail labels (e.g., INBOX, SENT, SPAM, custom labels)
+  and state the total count. Even a partial list is acceptable for success.

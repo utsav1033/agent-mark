@@ -1,0 +1,11 @@
+id: notion_001
+toolkit: notion
+difficulty: easy
+prompt: "List all pages in my Notion workspace."
+expected_tools:
+  - NOTION_LIST_PAGES
+min_tool_calls: 1
+max_tool_calls: 2
+success_rubric: |
+  Response should list Notion pages from the user's workspace, including at minimum
+  their titles. A count or mention of how many pages exist is a bonus.

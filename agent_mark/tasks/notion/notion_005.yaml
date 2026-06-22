@@ -1,0 +1,13 @@
+id: notion_005
+toolkit: notion
+difficulty: hard
+prompt: "Find all Notion pages that were created or edited in the last 7 days. Summarize what each one is about based on its content."
+expected_tools:
+  - NOTION_LIST_PAGES
+  - NOTION_GET_PAGE_CONTENT
+min_tool_calls: 2
+max_tool_calls: 6
+success_rubric: |
+  Response should identify pages edited or created in the last 7 days and provide a
+  brief summary of each one's content — not just their titles. If no recent pages exist,
+  the response should say so explicitly.

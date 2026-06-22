@@ -1,0 +1,13 @@
+id: notion_004
+toolkit: notion
+difficulty: medium
+prompt: "Find a page in my Notion workspace and tell me its full content. Pick the most recently edited one."
+expected_tools:
+  - NOTION_LIST_PAGES
+  - NOTION_GET_PAGE_CONTENT
+min_tool_calls: 2
+max_tool_calls: 3
+success_rubric: |
+  Response should identify a specific Notion page and return its content — not just the
+  title. The agent must make at least two tool calls: one to find the page, one to fetch
+  its content.

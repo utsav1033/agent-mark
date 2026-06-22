@@ -1,0 +1,12 @@
+id: gmail_004
+toolkit: gmail
+difficulty: medium
+prompt: "Find unread emails in my inbox. How many are there and who are they from?"
+expected_tools:
+  - GMAIL_FETCH_EMAILS
+min_tool_calls: 1
+max_tool_calls: 3
+success_rubric: |
+  The response should state the count of unread emails and list at least the senders
+  (or state there are no unread emails). The agent must have actually fetched emails,
+  not just guessed.

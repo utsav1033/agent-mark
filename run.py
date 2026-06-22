@@ -1,5 +1,5 @@
 """Thin shim — kept so `python run.py` continues to work."""
-from cli import main
+from agent_mark.cli import main
 
 if __name__ == "__main__":
     main()

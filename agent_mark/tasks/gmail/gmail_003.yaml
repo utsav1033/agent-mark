@@ -1,0 +1,12 @@
+id: gmail_003
+toolkit: gmail
+difficulty: medium
+prompt: "Search for emails with the word 'invoice' in the subject and summarize what you find."
+expected_tools:
+  - GMAIL_FETCH_EMAILS
+min_tool_calls: 1
+max_tool_calls: 3
+success_rubric: |
+  The response should either list emails whose subjects contain 'invoice' (with sender and
+  date), or clearly state that no such emails were found. A summary of amounts or vendors
+  mentioned is a bonus but not required.

@@ -1,0 +1,12 @@
+id: github_004
+toolkit: github
+difficulty: medium
+prompt: "List open pull requests in 'composiohq/composio'. How many are there and who authored the most recent one?"
+expected_tools:
+  - GITHUB_LIST_PULL_REQUESTS
+min_tool_calls: 1
+max_tool_calls: 3
+success_rubric: |
+  The response should state the count of open pull requests in composiohq/composio and
+  identify the author of the most recently opened PR. If there are no open PRs, the agent
+  should clearly state that.

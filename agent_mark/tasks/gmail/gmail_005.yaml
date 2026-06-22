@@ -1,0 +1,15 @@
+id: gmail_005
+toolkit: gmail
+difficulty: hard
+prompt: >
+  Find emails received in the last 7 days that have attachments.
+  List each email's subject, sender, and the name of the attachment if visible.
+  If there are none, say so explicitly.
+expected_tools:
+  - GMAIL_FETCH_EMAILS
+min_tool_calls: 1
+max_tool_calls: 5
+success_rubric: |
+  The response should list emails with attachments from the past week (subject + sender),
+  or explicitly confirm no such emails exist. Attachment names are a bonus. The response
+  must not fabricate emails — it should reflect actual fetched data.

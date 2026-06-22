@@ -101,6 +101,37 @@ def _example_trajectory(result: dict) -> str:
     )
 
 
+def _pass_k_table(results: list[dict]) -> str | None:
+    """
+    Build a pass^k curve table from results that have a pass_k field.
+    Returns None if no results were run with --repeat > 1.
+    """
+    repeat_results = [r for r in results if r.get("pass_k")]
+    if not repeat_results:
+        return None
+
+    max_k = max(int(k) for r in repeat_results for k in r["pass_k"])
+
+    lines = [
+        "| k | Tasks with pass_k data | pass^k rate |",
+        "|---|---|---|",
+    ]
+    for k in range(1, max_k + 1):
+        sk = str(k)
+        eligible = [r for r in repeat_results if sk in r.get("pass_k", {})]
+        if not eligible:
+            continue
+        passed = sum(1 for r in eligible if r["pass_k"][sk] == 1)
+        rate = passed / len(eligible)
+        lines.append(f"| {k} | {len(eligible)} | {rate:.0%} |")
+
+    note = (
+        "\n_pass^k = fraction of tasks where all k independent runs succeeded. "
+        "A steep drop from k=1 to k=2 indicates the agent is non-deterministic on borderline tasks._"
+    )
+    return "\n".join(lines) + note
+
+
 def generate_report(results_dir: str | Path, adapter_name: str = "unknown") -> str:
     results = _load_results(results_dir)
     if not results:
@@ -109,7 +140,6 @@ def generate_report(results_dir: str | Path, adapter_name: str = "unknown") -> s
     by_toolkit = _aggregate(results, "toolkit")
     by_difficulty = _aggregate(results, "difficulty")
 
-    # Pick one success and one failure for example trajectories
     successes = [r for r in results if r.get("judge_result", {}).get("success") == 1]
     failures = [r for r in results if r.get("judge_result", {}).get("success") == 0]
     examples: list[dict] = []
@@ -119,15 +149,20 @@ def generate_report(results_dir: str | Path, adapter_name: str = "unknown") -> s
         examples.append(failures[0])
 
     parts = [
-        f"# agent-mark Evaluation Report",
+        "# agent-mark Evaluation Report",
         f"\nAdapter: **{adapter_name}** | Tasks run: **{len(results)}**\n",
         "## Results by Toolkit\n",
         _table(by_toolkit, "Toolkit"),
         "\n## Results by Difficulty\n",
         _table(by_difficulty, "Difficulty"),
-        "\n## Example Trajectories\n",
     ]
 
+    pass_k_md = _pass_k_table(results)
+    if pass_k_md:
+        parts.append("\n## pass^k Reliability Curve\n")
+        parts.append(pass_k_md)
+
+    parts.append("\n## Example Trajectories\n")
     for ex in examples:
         label = "Success" if ex.get("judge_result", {}).get("success") == 1 else "Failure"
         parts.append(f"\n<details>\n<summary>Example {label}: {ex['task_id']}</summary>\n")

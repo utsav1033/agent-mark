@@ -1,0 +1,12 @@
+id: github_003
+toolkit: github
+difficulty: medium
+prompt: "List the 5 most recent open issues in 'composiohq/composio'. Include the title and who opened each issue."
+expected_tools:
+  - GITHUB_LIST_REPOSITORY_ISSUES
+min_tool_calls: 1
+max_tool_calls: 3
+success_rubric: |
+  The response should list at least 3 open issues from composiohq/composio with issue titles
+  and opener usernames. Issues must be currently open (not closed). If the repo has fewer
+  than 5 open issues, listing all of them is acceptable.

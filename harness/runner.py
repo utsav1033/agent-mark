@@ -1,6 +1,11 @@
 """
-Loads a task YAML, runs it through an adapter, scores the trajectory,
-judges success via Gemini, and returns a structured result dict.
+Loads a task YAML, runs it through an adapter (optionally k times), scores the
+trajectory, judges success, and returns a structured result dict.
+
+With repeat=1 (default) the result shape is identical to previous versions.
+With repeat=k the result gains two extra keys:
+  runs     — list of per-run dicts (trajectory, scores, judge_result, error)
+  pass_k   — {"1": 0|1|None, "2": ..., ...} for k = 1..repeat
 
 Errors during a run are caught, logged, and recorded — they never crash the suite.
 """
@@ -10,7 +15,6 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
-import os
 import time
 from pathlib import Path
 from typing import Any
@@ -40,41 +44,94 @@ def _trajectory_to_dict(t: Trajectory) -> dict:
     }
 
 
-def run_task(task: dict, agent: Agent, results_dir: str | Path = "results") -> dict:
-    """Run one task. Returns a result dict regardless of success or failure."""
-    task_id = task["id"]
-    log.info("Running task %s", task_id)
+def _run_once(task: dict, agent: Agent) -> dict:
+    """Execute the task once. Returns a single-run dict (no task metadata)."""
+    try:
+        trajectory: Trajectory = agent.run(task["prompt"])
+        scores = score(trajectory, task)
 
+        if hasattr(agent, "get_mock_judge"):
+            judge_result = agent.get_mock_judge(task["prompt"]) or {
+                "success": None,
+                "reasoning": "judge-failed: no mock result for prompt",
+            }
+        else:
+            judge_result = judge(
+                prompt=task["prompt"],
+                rubric=task.get("success_rubric", ""),
+                response=trajectory.final_response,
+            )
+
+        return {
+            "trajectory": _trajectory_to_dict(trajectory),
+            "scores": scores,
+            "judge_result": judge_result,
+            "error": None,
+        }
+
+    except Exception as exc:
+        log.exception("Task %s errored: %s", task.get("id"), exc)
+        return {
+            "trajectory": None,
+            "scores": {},
+            "judge_result": None,
+            "error": str(exc),
+        }
+
+
+def _compute_pass_k(runs: list[dict]) -> dict[str, int | None]:
+    """
+    For each k in 1..len(runs), return 1 if the first k runs all succeeded,
+    0 if any failed, None if any judge result was inconclusive.
+    """
+    pass_k: dict[str, int | None] = {}
+    for k in range(1, len(runs) + 1):
+        first_k = [r["judge_result"].get("success") if r.get("judge_result") else None for r in runs[:k]]
+        if any(s is None for s in first_k):
+            pass_k[str(k)] = None
+        elif all(s == 1 for s in first_k):
+            pass_k[str(k)] = 1
+        else:
+            pass_k[str(k)] = 0
+    return pass_k
+
+
+def run_task(
+    task: dict,
+    agent: Agent,
+    results_dir: str | Path = "results",
+    repeat: int = 1,
+) -> dict:
+    """Run one task repeat times. Returns a result dict regardless of success or failure."""
+    task_id = task["id"]
+    log.info("Running task %s (repeat=%d)", task_id, repeat)
+
+    runs = []
+    for i in range(repeat):
+        if repeat > 1:
+            log.info("  run %d/%d", i + 1, repeat)
+        runs.append(_run_once(task, agent))
+
+    first = runs[0]
     result: dict[str, Any] = {
         "task_id": task_id,
         "toolkit": task.get("toolkit", ""),
         "difficulty": task.get("difficulty", ""),
         "mutates": task.get("mutates", False),
         "prompt": task["prompt"],
-        "trajectory": None,
-        "scores": {},
-        "judge_result": None,
-        "error": None,
+        # Top-level fields from run 1 (backward-compatible)
+        "trajectory": first["trajectory"],
+        "scores": first["scores"],
+        "judge_result": first["judge_result"],
+        "error": first["error"],
         "run_ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
 
-    try:
-        trajectory: Trajectory = agent.run(task["prompt"])
-        result["trajectory"] = _trajectory_to_dict(trajectory)
-        result["scores"] = score(trajectory, task)
+    if repeat > 1:
+        result["repeat"] = repeat
+        result["runs"] = [{"run": i + 1, **r} for i, r in enumerate(runs)]
+        result["pass_k"] = _compute_pass_k(runs)
 
-        judge_result = judge(
-            prompt=task["prompt"],
-            rubric=task.get("success_rubric", ""),
-            response=trajectory.final_response,
-        )
-        result["judge_result"] = judge_result
-
-    except Exception as exc:
-        log.exception("Task %s errored: %s", task_id, exc)
-        result["error"] = str(exc)
-
-    # Persist to results/
     results_path = Path(results_dir)
     results_path.mkdir(exist_ok=True)
     out_file = results_path / f"{task_id}.json"

@@ -1,0 +1,11 @@
+id: notion_003
+toolkit: notion
+difficulty: medium
+prompt: "Search my Notion workspace for pages related to 'project'. List what you find."
+expected_tools:
+  - NOTION_SEARCH
+min_tool_calls: 1
+max_tool_calls: 3
+success_rubric: |
+  Response should list Notion pages or databases matching 'project', including their
+  titles. If nothing is found, the response should say so explicitly rather than guessing.
