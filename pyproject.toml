@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.scripts]
-agent-mark = "run:main"
+agent-mark = "cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["adapters", "harness"]
