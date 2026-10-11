@@ -1,0 +1,11 @@
+id: coding_001
+toolkit: coding
+difficulty: easy
+prompt: >
+  Users report two pagination bugs: page 1 of the results skips the first items,
+  and the last partially-filled page never shows up in the page count.
+  Fix pager.py. Pages are 1-indexed.
+workspace: coding_001
+expected_tools: [edit, write, hashline_edit]
+min_tool_calls: 2
+max_tool_calls: 8

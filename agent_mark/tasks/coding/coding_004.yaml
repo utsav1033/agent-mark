@@ -1,0 +1,14 @@
+id: coding_004
+toolkit: coding
+difficulty: medium
+prompt: >
+  Without changing any files: when the APP_TIMEOUT environment variable is NOT set,
+  what timeout in seconds does HttpClient actually use for its requests?
+  Trace it through the code; the docs may be out of date.
+  End your answer with a line of the form "ANSWER: <number>".
+workspace: coding_004
+expected_tools: [read, grep, find, bash]
+min_tool_calls: 2
+max_tool_calls: 10
+expected_answer: 'ANSWER:\s*\**\s*20(\.0+)?\b'
+must_not_modify: true

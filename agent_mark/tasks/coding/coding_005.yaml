@@ -1,0 +1,13 @@
+id: coding_005
+toolkit: coding
+difficulty: medium
+prompt: >
+  Add a `--top N` option to wordfreq.py. When given, print only the N most frequent
+  words. Ties must be broken alphabetically (so output is deterministic), and the
+  output format must stay exactly the same as today ("<word> <count>" per line).
+  Without --top the behaviour must not change. N must be a positive integer;
+  for N <= 0 the program should exit with an argparse error.
+workspace: coding_005
+expected_tools: [edit, write, hashline_edit]
+min_tool_calls: 2
+max_tool_calls: 10

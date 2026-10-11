@@ -1,0 +1,8 @@
+id: coding_002
+toolkit: coding
+difficulty: easy
+prompt: "Implement slugify() in text_utils.py exactly as its docstring specifies."
+workspace: coding_002
+expected_tools: [edit, write, hashline_edit]
+min_tool_calls: 2
+max_tool_calls: 8

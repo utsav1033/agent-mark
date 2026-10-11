@@ -1,0 +1,11 @@
+id: coding_006
+toolkit: coding
+difficulty: medium
+prompt: >
+  Customer support ticket: "I used the code SAVE10 on a $50 order and was charged
+  $40.50 instead of $45.00." Find the root cause in the shop package and fix it.
+  Discount codes should be applied exactly once.
+workspace: coding_006
+expected_tools: [edit, write, hashline_edit]
+min_tool_calls: 3
+max_tool_calls: 12

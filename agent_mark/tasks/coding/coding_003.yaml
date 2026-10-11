@@ -1,0 +1,8 @@
+id: coding_003
+toolkit: coding
+difficulty: easy
+prompt: "The test suite in this repo is failing. Find the bug and fix it (fix the code, not the tests)."
+workspace: coding_003
+expected_tools: [edit, write, hashline_edit]
+min_tool_calls: 3
+max_tool_calls: 10
