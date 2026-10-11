@@ -1,224 +1,250 @@
 # agent-mark
 
-An evaluation harness for tool-using AI agents. It runs an agent against a set of
-tasks and scores not just whether the task succeeded, but *how* the agent got there —
-the tools it called, the path it took, the latency and token cost — for any agent
-whose tool calls are observable.
+**Benchmark any tool-using AI agent: did it solve the task, how did it get there, how
+long did it take, and what did it cost in real dollars.**
 
-> **Status — honest version.** This is an early harness. The architecture, scoring,
-> and pipeline are built and validated end-to-end. **One adapter has been run against
-> a live agent (TrustClaw on real Gmail); the trajectory-level examples below are
-> synthetic fixtures used to build and test the scorer, not observed agent runs.**
-> Live simple-adapter benchmarks are the next step. Everything is labelled real vs
-> synthetic so there's no ambiguity.
+agent-mark runs an agent against a suite of tasks and scores the *outcome* and the
+*path* separately. A coding agent that fixes the bug in 3 tool calls for $0.004 and one
+that fixes it in 19 calls for $0.12 both "pass". agent-mark tells them apart.
+
+- **Deterministic coding suite.** 10 small repos with real bugs and feature requests,
+  graded by **hidden tests** the agent never sees. No LLM judge, so grading costs nothing
+  and isn't subjective.
+- **Bring any agent.** Use a built-in adapter (pi, Claude+Composio, TrustClaw), wrap any
+  CLI agent with one flag, or write a 30-line Python adapter.
+- **Real cost accounting, with hard spend limits.** Per-task $ and token caps are
+  enforced *while the agent runs*. There's a suite-wide budget, `--dry-run`, a
+  confirmation prompt before anything paid, and finished tasks are never re-run.
+- **$0 self-checks.** Every task is validated against its reference solution. The whole
+  pipeline is tested end-to-end against a scripted fake LLM.
 
 ---
 
-<img width="896" height="404" alt="agent-mark running the TrustClaw adapter against live Gmail" src="https://github.com/user-attachments/assets/a6284cbf-413d-42d5-864c-49fbba320472" />
+## Install
 
-*TrustClaw adapter running against a live Gmail inbox.*
+```bash
+pipx install git+https://github.com/utsav1033/agent-mark      # or: uv tool install git+...
+agent-mark list        # show the bundled task suites
+agent-mark validate    # prove every coding task is sound ($0)
+agent-mark demo        # mock end-to-end run with a report ($0)
+```
+
+The core install depends only on `pyyaml` and `httpx`. The LLM-judged Composio suites
+need `pipx install "agent-mark[composio] @ git+https://github.com/utsav1033/agent-mark"`.
 
 ---
 
-## Two adapters, two kinds of visibility
+## Benchmark pi (Rust coding agent)
 
-agent-mark ships two adapters, and they expose very different information. This gap is
-the central idea of the project.
+[pi_agent_rust](https://github.com/Dicklesworthstone/pi_agent_rust) is a Rust port of
+Mario Zechner's pi coding agent. agent-mark runs it headless (`pi -p --mode json`)
+inside a scratch copy of each task repo. It reads pi's event stream to capture every
+tool call (name, args, output, error flag, latency) plus exact token usage and $ cost.
 
-**simple** runs a Claude model directly with Composio tools. Every tool call passes
-through your code, so the harness captures the full trajectory — which tools were
-called, with what arguments, what came back, how long each step took. You can score
-task success, tool correctness, efficiency, latency, and token cost.
+```bash
+# 1. See the plan and the worst-case spend. Runs nothing.
+agent-mark run --adapter pi --model claude-haiku-5-5 \
+  --base-url "$LITELLM_BASE_URL/v1" --api-key-env LITELLM_API_KEY \
+  --suite coding --dry-run
 
-**trustclaw** sends the prompt to a local [TrustClaw](https://github.com/ComposioHQ/trustclaw)
-instance over HTTP and reads a streaming text response. TrustClaw runs its Composio
-tool loop server-side before streaming begins, so no tool events appear in the output.
-The harness can only observe the final answer and total latency. Tool correctness and
-efficiency are N/A — not because TrustClaw performs badly, but because the information
-is not observable from outside.
+# 2. Smoke-test a single task with a 10-cent ceiling.
+agent-mark run --adapter pi --model claude-haiku-5-5 \
+  --base-url "$LITELLM_BASE_URL/v1" --api-key-env LITELLM_API_KEY \
+  --task coding_001 --budget-usd 0.10
 
-| Metric | simple | trustclaw |
+# 3. Run the full suite (tasks already done in step 2 are skipped, not re-paid).
+agent-mark run ... --suite coding --budget-usd 1
+```
+
+- **`--base-url`** points at any OpenAI-compatible endpoint (a LiteLLM proxy, vLLM, …).
+  For a LiteLLM proxy, prices are fetched automatically from its `/model/info`. For
+  pi's built-in providers, use `--provider anthropic|openai|openrouter|…` and pi's own
+  price catalog.
+- **Isolation.** Each run gets a throwaway `PI_CODING_AGENT_DIR`, and extensions,
+  skills, prompt templates and sessions are disabled. Your personal `~/.pi` setup
+  never leaks into results.
+- **Tools.** The default set is `read,bash,edit,write,grep,find,ls` (change it with
+  `--pi-tools`), so web search can't silently add cost or leak the answers.
+
+### Spend guards
+
+| Guard | Default | Behaviour |
 |---|---|---|
-| Task success | ✓ | ✓ |
-| Tool correctness | ✓ | N/A — server-side |
-| Efficiency | ✓ | N/A — server-side |
-| Latency | ✓ | ✓ |
-| Full trajectory | ✓ | N/A — server-side |
-| Token counts | ✓ | N/A — not exposed |
+| `--budget-usd` | `$1.00` | Suite stops once this much is spent |
+| `--max-cost-per-task` | `$0.25` | Agent is killed mid-run when it crosses this |
+| `--max-tokens-per-task` | `300,000` | Agent is killed mid-run (works even if the model is unpriced) |
+| `--timeout` | `300s` | Agent is killed mid-run |
+| `--dry-run` | – | Prints the plan and worst-case spend, runs nothing |
+| confirmation | on | Paid runs ask `Proceed? [y/N]` unless `--yes` |
+| resume | on | Tasks with an existing result are skipped unless `--force` |
 
-The simple adapter exposes the path, so we can score how the agent got there. TrustClaw
-exposes only the end result, so we can confirm what it achieved but not how. This
-observable-vs-black-box gap is the central tradeoff when evaluating agents you don't
-own: you gain a realistic, unmodified target, but you lose interpretability.
+A killed run is still recorded and scored as a failure, with its `stop_reason`
+(`budget_exceeded`, `token_limit`, `timeout`) shown in the report. Guards are checked
+after every model turn, so a run can overshoot its cap by at most one turn.
+
+---
+
+## Benchmark your own agent
+
+**Any CLI agent, zero code.** `{prompt}` is replaced with the task prompt. The command
+runs inside the task workspace.
+
+```bash
+agent-mark run --adapter command --agent-cmd "my-agent --print {prompt}" --suite coding
+```
+
+Black-box, this scores task success and latency. To also score the path and cost,
+print JSON lines from your agent (the *agent-mark event protocol*):
+
+```json
+{"type": "tool_call", "name": "edit", "args": {"path": "pager.py"}, "result": {"text": "ok"}, "latency_ms": 12}
+{"type": "usage", "input_tokens": 1200, "output_tokens": 80, "cost_usd": 0.0004}
+{"type": "final", "text": "Fixed both pagination bugs."}
+```
+
+**Python adapter.** Return a `Trajectory` and the rest of the pipeline just works:
+
+```python
+# my_agent.py  →  agent-mark run --adapter my_agent:MyAgent --suite coding
+from pathlib import Path
+from agent_mark.adapters.base import Trajectory, ToolCall
+
+class MyAgent:
+    def run(self, prompt: str, *, workdir: Path | None = None) -> Trajectory:
+        ...  # do the work inside workdir
+        return Trajectory(prompt=prompt, tool_calls=[...], final_response="...",
+                          total_latency_ms=..., input_tokens=..., output_tokens=..., cost_usd=...)
+```
+
+---
+
+## What gets measured
+
+| Metric | How | Why it matters |
+|---|---|---|
+| **Task success** | Hidden tests pass / expected answer matches (coding). Gemini rubric judge (Composio suites) | Did it work? |
+| **Tool correctness** | Called one of the task's expected tools | Right kind of action |
+| **Efficiency** | `min_tool_calls / actual_tool_calls` | Wasted steps |
+| **Tool error rate** | Share of tool calls that errored (bad edit, failing command) | Sloppy tool use |
+| **Within max calls** | Stayed under the task's call ceiling | Flailing |
+| **Latency** | Wall clock per task and per tool call | UX |
+| **Cost** | Real $ and tokens (incl. cache) per task | Money |
+| **Cost per solved task** | Total $ ÷ tasks solved | The number that matters for choosing a model |
+| **pass^k** | `--repeat k`: did all k independent runs pass? | Reliability, not luck |
+
+Results are aggregated per suite and per difficulty in `results/<adapter>-<model>/report.md`,
+with a per-task table and example trajectories.
+
+---
+
+## Task suites
+
+| Suite | Tasks | Graded by | Needs |
+|---|---|---|---|
+| `coding` | 10 (3 easy, 4 medium, 3 hard) | hidden unit tests / answer regex | nothing (Python 3.11+) |
+| `gmail`, `github`, `notion` | 5 each | Gemini 2.5 Flash rubric judge | Composio + live accounts |
+
+**Coding tasks** cover: an off-by-one pagination bug, implementing a function from its
+docstring, fixing a failing test, tracing a config value through code while the README
+lies (read-only; any edit fails the task), adding a CLI flag, a discount applied twice
+that's only described as a customer complaint, a cross-file rename that keeps a
+deprecated alias, an LRU cache with expiry, a CSV parser with quoted fields, and a
+free-slot finder with overlapping intervals.
+
+Each task is a directory:
+
+```
+coding_006.yaml          prompt, difficulty, expected tools, call bounds
+coding_006/repo/         copied to a temp dir; the agent works here
+coding_006/hidden_tests/ copied in only after the agent finishes, then run
+coding_006/solution/     reference fix; `agent-mark validate` checks it passes
+```
+
+`agent-mark validate` proves every task is sound in both directions: the untouched
+repo **fails** (the task measures something) and the reference solution **passes**
+(the task is solvable). Bring your own suite with `--tasks ./my_tasks`.
 
 ---
 
 ## Results
 
-### TrustClaw adapter — real run (live Gmail)
+### pi (Rust) on the coding suite
 
-The only live agent run so far. Outcome and latency are real; tool correctness and
-efficiency are N/A because TrustClaw's tool loop is not observable.
+> **Pending a live run.** The pipeline is verified end-to-end against the real pi
+> binary with a scripted fake model (see *Development*). Real numbers go here after the
+> first paid run. No synthetic numbers are presented as results.
 
-| Toolkit | Tasks | Success | Tool Correctness | Efficiency | Avg Latency |
-|---------|-------|---------|------------------|------------|-------------|
-| gmail   | 5     | 60%     | N/A              | N/A        | 24.3s       |
+| Model | Solved | Cost | Cost / solved | Median latency | Tool err rate |
+|---|---|---|---|---|---|
+| claude-haiku-5-5 | – | – | – | – | – |
+
+### TrustClaw on Gmail (v1, live run)
+
+<img width="896" height="404" alt="agent-mark running the TrustClaw adapter against live Gmail" src="https://github.com/user-attachments/assets/a6284cbf-413d-42d5-864c-49fbba320472" />
 
 | Difficulty | Tasks | Success | Avg Latency |
-|------------|-------|---------|-------------|
-| easy       | 2     | 100%    | 18.7s       |
-| medium     | 2     | 50%     | 30.8s       |
-| hard       | 1     | 0%      | 22.5s       |
+|---|---|---|---|
+| easy | 2 | 100% | 18.7s |
+| medium | 2 | 50% | 30.8s |
+| hard | 1 | 0% | 22.5s |
 
-### simple adapter — benchmark pending
-
-Not yet run against live credentials. The harness supports it fully; this table is a
-placeholder until a clean live run is done.
-
-| Toolkit | Tasks | Success | Tool Correctness | Efficiency | Avg Latency | Avg Tokens |
-|---------|-------|---------|------------------|------------|-------------|------------|
-| gmail   | —     | —       | —                | —          | —           | —          |
-
-To populate it:
-
-```bash
-agent-mark run --adapter simple --toolkit gmail
-```
+TrustClaw runs its tool loop server-side and streams only the final text, so only
+outcome and latency are observable. Tool correctness and efficiency are N/A. That's
+a visibility limit, not a performance verdict, and it's the reason the event protocol
+above exists.
 
 ---
 
 ## How it works
 
-Every adapter implements one method — `run(prompt) -> Trajectory` — and the rest of
-the pipeline works unchanged. A `Trajectory` captures the prompt, every tool call made,
-the final response, latency, and token counts. The runner loads a task YAML, invokes
-the adapter, then passes the trajectory to the scorer (programmatic checks) and the
-judge (Gemini 2.5 Flash with a per-task rubric). Results are saved as JSON and
-aggregated into a markdown report.
-
-```python
-@dataclass
-class Trajectory:
-    prompt: str
-    tool_calls: list[ToolCall]   # name, args, result, latency_ms
-    final_response: str
-    total_latency_ms: float
-    input_tokens: int
-    output_tokens: int
+```
+task YAML ──► runner ──► adapter.run(prompt, workdir) ──► Trajectory
+                │                                           │
+                │   workspace tasks: hidden tests ◄─────────┤
+                │   other tasks:     Gemini judge ◄─────────┤
+                ▼                                           ▼
+           results/<adapter>-<model>/<task>.json  ◄──  scorer (path metrics)
+                ▼
+           report.md (per suite / difficulty / task, cost, stop reasons)
 ```
 
-### Scoring, in detail
+Every adapter returns the same `Trajectory` (prompt, tool calls, final response,
+latency, tokens, `cost_usd`, `stop_reason`). The runner, scorer and report never know
+which agent produced it.
 
-Each run is scored on five dimensions, by two different mechanisms:
-
-- **Task success** (0/1) — decided by the **judge** (Gemini 2.5 Flash) against a
-  per-task rubric. Judges the *outcome*.
-- **Tool correctness** (0/1) — **programmatic**. Each task declares expected tools;
-  the scorer checks the trajectory's actual tool calls. *Current check is coarse: 1 if
-  any expected tool was called. A stricter version comparing the full expected
-  sequence is planned.*
-- **Efficiency** (0–1) — **programmatic**. `min_tool_calls / actual_tool_calls`.
-  Catches wasteful or redundant paths.
-- **Latency** (ms) and **cost** (input + output tokens) — measured, reported.
-
-The judge grades the outcome; programmatic checks grade the path. Outcome and path are
-scored separately — that separation is the point. An agent can succeed at the task
-while taking a wrong or wasteful path, and only the path metrics catch that.
-
-For the TrustClaw adapter, tool correctness and efficiency are N/A: its tool calls are
-not exposed in the SSE stream, so the path cannot be inspected. This is a visibility
-limitation, not a performance failure.
+**Design choices**
+- **Hidden tests over LLM judges for code.** They're deterministic, free, and immune
+  to judge bias. Because they're copied in *after* the run, the agent can't read them
+  or "fix" them.
+- **Outcome and path scored separately.** Success alone hides the 19-call, $0.12 run.
+- **Errors never crash the suite.** A broken run is recorded as an error and the suite
+  continues. Harness failures (bad API key) are kept distinct from agent failures.
 
 ---
 
-## Quick start
+## Development
 
 ```bash
-git clone https://github.com/utsav1033/agent-mark && cd agent-mark
 pip install -e .
-cp .env.example .env        # fill in ANTHROPIC_API_KEY and COMPOSIO_API_KEY
-python run.py --adapter simple --task gmail_001
+PI_BINARY=/path/to/pi python -m unittest discover -s tests -t .
 ```
 
----
+The test suite costs $0 and includes:
+- unit tests for pi's event parsing and the scorer
+- `validate` over every bundled task
+- the command adapter driven by a scripted agent
+- **the real pi binary end-to-end** against `tests/fake_llm.py`, a scripted
+  OpenAI-compatible server. It solves a task, checks the exact $ accounting, and checks
+  that the budget and token guards kill a runaway agent. Skipped if no pi binary is
+  found.
 
-## Adapters
+## Limitations
 
-- **simple** — Anthropic + Composio Python SDK. Reference implementation. Token counts
-  and tool calls fully visible.
-- **trustclaw** — HTTP/SSE client for a local
-  [TrustClaw](https://github.com/ComposioHQ/trustclaw) instance.
-- **adding your own** — implement the `Agent` protocol (~30 lines). If it returns a
-  `Trajectory`, it works.
+- Ten coding tasks is a smoke-level benchmark, not SWE-bench. The tasks are small by
+  design so a full run costs cents.
+- Tool correctness is any-of over expected tools; it doesn't check ordering.
+- A single run per task shows capability, not reliability. Use `--repeat` for pass^k.
+- Composio suites depend on live account contents and an LLM judge, so they aren't
+  reproducible across users. The coding suite is.
 
-```python
-class YourAgent:
-    def run(self, prompt: str) -> Trajectory:
-        ...
-```
-
-Because the scorer and report are adapter-agnostic, adding a new agent or a new toolkit
-(e.g. GitHub, with its destructive actions and multi-step workflows) is mostly task
-authoring, not pipeline changes.
-
----
-
-## Methodology
-
-**Tasks.** 5 tasks per toolkit across 3 difficulty levels: easy (single tool call,
-clear expected output), medium (2–3 tool calls, some reasoning), hard (multi-step or
-ambiguous constraints). All tasks are read-only — no mutations to live data during
-evaluation.
-
-**Judge.** Gemini 2.5 Flash with a per-task rubric, forced JSON output. Retries once on
-parse failure. If it cannot produce a valid result after two attempts the task is
-marked `judge-failed` and excluded from aggregates rather than defaulting to pass or
-fail. LLM judges have known weaknesses (position and verbosity bias, and for safety
-tasks they can be fooled by the same input), so judge output is treated as one signal,
-not ground truth.
-
----
-
-## Illustrative examples (synthetic)
-
-> These are **synthetic trajectories**, hand-authored to design and test the scoring
-> pipeline — not observed runs of a live agent. They show the *kind* of behavior the
-> harness is built to score and the failure modes it's meant to catch. Real
-> simple-adapter trajectories will replace these once a live benchmark is run.
-
-<details>
-<summary>Example: a passing task — list labels (easy)</summary>
-
-**Prompt:** List my email labels and tell me how many I have.
-
-A clean single-tool-call task: the agent calls a list-labels tool and reports the
-count. The kind of task the harness expects to pass reliably, used to confirm the
-scorer marks a correct single-call trajectory as success with full tool correctness.
-
-</details>
-
-<details>
-<summary>Example: a constraint-interpretation failure — received vs sent (hard)</summary>
-
-**Prompt:** Find emails received in the last 7 days that have attachments. List each
-email's subject, sender, and attachment name.
-
-The failure this example models: an agent returns attachments from *all* mail,
-including sent items, when the task said *received*. The data retrieval is correct; the
-query scope is wrong. This is a **constraint-interpretation failure, not a tool
-failure** — exactly the kind of issue task-success-only metrics miss but that a harness
-scoring the full trajectory is designed to surface. Used to verify the scorer
-distinguishes "wrong tool" from "right tool, wrong scope."
-
-</details>
-
----
-
-## Status & roadmap
-
-- **Done:** harness architecture, adapter interface, scoring pipeline, Gemini judge,
-  markdown reporting; one live adapter (TrustClaw) benchmarked on real Gmail.
-- **Next:** live simple-adapter benchmark; stricter tool-correctness (expected-sequence
-  match); a second toolkit (GitHub — destructive, multi-step) to stress trajectory and
-  reliability scoring; pass^k reliability (consistency across repeated runs); a
-  prompt-injection safety suite scored programmatically on tool calls.
+MIT licensed.

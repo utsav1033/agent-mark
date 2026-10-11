@@ -24,7 +24,7 @@ Cases covered:
 
 from __future__ import annotations
 
-from adapters.base import Trajectory, ToolCall
+from agent_mark.adapters.base import Trajectory, ToolCall
 
 FIXTURES: list[dict] = [
 

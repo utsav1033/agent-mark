@@ -17,7 +17,7 @@ import time
 
 import anthropic
 
-from adapters.base import Agent, Trajectory, ToolCall
+from agent_mark.adapters.base import Agent, Trajectory, ToolCall
 
 log = logging.getLogger(__name__)
 

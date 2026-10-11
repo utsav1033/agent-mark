@@ -13,8 +13,8 @@ venv/
 env/
 
 # Results (keep .gitkeep)
-results/*.json
-results/*.md
+results/*
+!results/.gitkeep
 
 # Environment
 .env

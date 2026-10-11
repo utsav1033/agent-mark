@@ -1,0 +1,11 @@
+id: coding_007
+toolkit: coding
+difficulty: medium
+prompt: >
+  Rename the function `fetch_usr` to `fetch_user` everywhere in this repo, including
+  every call site. Keep `fetch_usr` importable from users.api as a deprecated alias
+  that emits a DeprecationWarning and then behaves exactly like fetch_user.
+workspace: coding_007
+expected_tools: [edit, write, hashline_edit]
+min_tool_calls: 4
+max_tool_calls: 16

@@ -32,7 +32,7 @@ import time
 
 import httpx
 
-from adapters.base import Trajectory, ToolCall
+from agent_mark.adapters.base import Trajectory, ToolCall
 
 log = logging.getLogger(__name__)
 

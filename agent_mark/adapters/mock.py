@@ -7,12 +7,12 @@ Gemini judge entirely — the mock result is pre-set per task.
 
 Usage:
     agent-mark demo
-    python cli.py --adapter mock --toolkit gmail
+    agent-mark run --adapter mock --suite gmail
 """
 
 from __future__ import annotations
 
-from adapters.base import Trajectory, ToolCall
+from agent_mark.adapters.base import Trajectory, ToolCall
 
 # Pre-built Trajectory + judge result for each Gmail task prompt.
 # Mirrors realistic output from a Composio-powered agent.

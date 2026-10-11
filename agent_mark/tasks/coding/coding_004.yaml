@@ -12,3 +12,4 @@ min_tool_calls: 2
 max_tool_calls: 10
 expected_answer: 'ANSWER:\s*\**\s*20(\.0+)?\b'
 must_not_modify: true
+oracle_answer: "HttpClient uses settings.BASE_TIMEOUT * RETRY_BACKOFF_FACTOR = 8 * 2.5.\nANSWER: 20"

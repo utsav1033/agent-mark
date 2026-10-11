@@ -1,0 +1,8 @@
+id: coding_008
+toolkit: coding
+difficulty: hard
+prompt: "Implement the TTLCache class in ttl_cache.py so that it satisfies its docstrings."
+workspace: coding_008
+expected_tools: [edit, write, hashline_edit]
+min_tool_calls: 2
+max_tool_calls: 12

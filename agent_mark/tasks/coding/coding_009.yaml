@@ -1,0 +1,13 @@
+id: coding_009
+toolkit: coding
+difficulty: hard
+prompt: >
+  parse_line() in csvlite.py breaks on real exports: fields can be wrapped in double
+  quotes, quoted fields may contain commas, and a literal double quote inside a quoted
+  field is written as two double quotes (""). Make parse_line handle these cases.
+  Do not use the csv module. A line with an unterminated quoted field must raise
+  ValueError.
+workspace: coding_009
+expected_tools: [edit, write, hashline_edit]
+min_tool_calls: 2
+max_tool_calls: 12

@@ -14,9 +14,6 @@ import json
 import logging
 import os
 
-from google import genai
-from google.genai import types
-
 log = logging.getLogger(__name__)
 
 _MODEL = "gemini-2.5-flash"
@@ -32,12 +29,15 @@ Respond with JSON only:
 {{"success": 0 or 1, "reasoning": "one sentence"}}
 """
 
-_client: genai.Client | None = None
+_client = None
 
 
-def _get_client() -> genai.Client:
+def _get_client():
+    """Lazy import: workspace tasks are verified by tests and never need Gemini."""
     global _client
     if _client is None:
+        from google import genai
+
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
             raise EnvironmentError("GOOGLE_API_KEY not set")
@@ -46,6 +46,8 @@ def _get_client() -> genai.Client:
 
 
 def _call_model(prompt_text: str) -> dict:
+    from google.genai import types
+
     client = _get_client()
     response = client.models.generate_content(
         model=_MODEL,

@@ -1,225 +1,144 @@
 # agent-mark
 
-A framework-agnostic evaluation harness for tool-using AI agents. The first target is
-TrustClaw (Composio's open-source personal agent), but the harness must work for any
-agent that takes a prompt and returns a trajectory of tool calls.
+A framework-agnostic evaluation harness for tool-using AI agents, shipped as an
+installable CLI (`agent-mark`) so anyone can benchmark their own agent. v2's primary
+target is **pi** (pi_agent_rust, the Rust port of the pi coding agent) on a
+deterministic coding suite; v1's Composio suites (gmail/github/notion) and
+TrustClaw/simple adapters remain supported.
 
 This file is the source of truth for Claude Code working on this repo. Read it fully
 before making changes.
 
+## Money rule (most important)
+
+The owner pays for model calls through a LiteLLM proxy with limited credits.
+**Never run anything that calls a paid model without asking first.** That includes
+`agent-mark run` with any adapter except `mock`, the Gemini judge, and the `simple`
+adapter. Free things you may run freely: `agent-mark list|validate|demo|run --dry-run`,
+the unit tests (they use `tests/fake_llm.py`), and metadata calls like `/v1/models` or
+`/model/info`. When proposing a paid run, state the model, task count, and caps.
+
 ## Project goal
 
-Produce a small, sharp evaluation harness that:
-- Runs ~20 real tasks against a tool-using agent
-- Scores each run on 5 dimensions (task success, tool correctness, efficiency, latency, cost)
-- Outputs a markdown report with aggregates and example trajectories
-- Includes at least 2 working adapters (TrustClaw, plus one fallback)
-
-This is a weekend project (~15 hours total budget). Optimize for shipping a clean,
-runnable artifact with real results, not for completeness.
-
-## What this is NOT
-
-- Not a TrustClaw fork. TrustClaw is one adapter target, not the subject.
-- Not a generic LLM eval (no HumanEval, MMLU, etc). This is specifically about
-  tool-using agents.
-- Not a red-team / injection harness. Just standard capability evaluation.
-- Not a leaderboard service. Single-run, local-first, markdown output.
+- Score agents on: task success, tool correctness, efficiency, tool error rate,
+  latency, real $ cost, cost per solved task, and pass^k with `--repeat`.
+- Deterministic coding suite graded by hidden tests (no LLM judge).
+- Plug in any agent: built-in adapters, `--adapter command` for any CLI agent, or
+  `--adapter module:Class` for a Python adapter.
+- Markdown report per run in `results/<adapter>-<model>/report.md`.
 
 ## Architecture
 
 ```
 agent-mark/
-├── CLAUDE.md              # this file
-├── README.md              # user-facing, written last
-├── pyproject.toml         # uv or poetry, Python 3.11+
-├── run.py                 # CLI entrypoint
-├── adapters/
-│   ├── base.py            # Agent protocol + Trajectory/ToolCall dataclasses
-│   ├── trustclaw.py       # HTTP client for local TrustClaw instance
-│   └── simple.py          # fallback: minimal LangGraph+Composio agent
-├── harness/
-│   ├── runner.py          # runs one task end-to-end against an adapter
-│   ├── judge.py           # Gemini-based rubric judge for task success
-│   ├── scorer.py          # programmatic checks on trajectory
-│   └── report.py          # aggregates results → markdown
-├── tasks/
-│   ├── gmail/
-│   ├── github/
-│   ├── linear/
-│   └── slack/
-└── results/               # generated markdown reports (gitignored except .gitkeep)
+├── CLAUDE.md
+├── README.md                   # user-facing; the "marketing surface"
+├── pyproject.toml              # hatchling; core deps: pyyaml, httpx; extra: [composio]
+├── run.py                      # shim → agent_mark.cli:main
+├── agent_mark/
+│   ├── cli.py                  # demo | list | validate | run | report
+│   ├── adapters/
+│   │   ├── base.py             # Trajectory / ToolCall / Agent protocol
+│   │   ├── pi.py               # pi_agent_rust via `pi -p --mode json`
+│   │   ├── command.py          # any CLI agent; optional JSON-lines event protocol
+│   │   ├── simple.py           # Claude + Composio reference agent
+│   │   ├── trustclaw.py        # HTTP/SSE client for a local TrustClaw
+│   │   └── mock.py             # canned Gmail trajectories for the $0 demo
+│   ├── harness/
+│   │   ├── runner.py           # load task → run adapter → score → decide success
+│   │   ├── workspace.py        # temp repo copy, hidden-test verify, task validation
+│   │   ├── scorer.py           # programmatic path metrics
+│   │   ├── judge.py            # Gemini rubric judge (non-workspace tasks only)
+│   │   └── report.py           # JSON results → markdown
+│   ├── fixtures/               # synthetic trajectories (scorer dev only, never results)
+│   └── tasks/<suite>/<id>.yaml (+ <id>/repo, hidden_tests, solution for workspace tasks)
+├── tests/                      # unittest; fake_llm.py = scripted OpenAI-compatible server
+└── results/                    # gitignored except .gitkeep
 ```
 
-## Core contract: the Trajectory dataclass
-
-Every adapter MUST return this shape. The runner, scorer, and judge only ever see
-`Trajectory`. This is what makes the harness framework-agnostic.
+## Core contract: Trajectory
 
 ```python
 @dataclass
 class ToolCall:
-    name: str           # e.g. "GMAIL_FETCH_EMAILS"
-    args: dict          # arguments passed to the tool
-    result: dict | None # tool response, if available
+    name: str
+    args: dict
+    result: dict | None
     latency_ms: float
 
 @dataclass
 class Trajectory:
     prompt: str
-    tool_calls: list[ToolCall]
-    final_response: str
-    total_latency_ms: float
-    input_tokens: int
-    output_tokens: int
+    tool_calls: list[ToolCall] = field(default_factory=list)
+    final_response: str = ""
+    total_latency_ms: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0.0
+    stop_reason: str = ""   # e.g. "stop", "budget_exceeded", "token_limit", "timeout"
 ```
 
-If an adapter can't fill a field (e.g. token counts not exposed), use 0 and document
-it in the adapter's docstring. Do not silently fabricate values.
+Adapters implement `run(prompt, *, workdir: Path | None = None) -> Trajectory`.
+`workdir` is passed only for workspace tasks. If an adapter can't fill a field, use the
+default and document it in the adapter docstring. Never fabricate values.
 
-## Task YAML format
+## Task YAML
 
 ```yaml
-id: gmail_001
-toolkit: gmail
-difficulty: easy        # easy | medium | hard
-prompt: "Find emails from notifications@github.com in the last 7 days"
-expected_tools:
-  - GMAIL_FETCH_EMAILS
-min_tool_calls: 1
-max_tool_calls: 3
+id: coding_001
+toolkit: coding            # = suite directory name
+difficulty: easy           # easy | medium | hard
+prompt: "..."
+workspace: coding_001      # optional → workspace task (dir next to the YAML)
+expected_tools: [edit, write, hashline_edit]   # any-of; exact tool names
+min_tool_calls: 2
+max_tool_calls: 8
+# workspace-only, optional:
+expected_answer: 'ANSWER:\s*20'   # regex on final response
+must_not_modify: true              # any file change fails
+oracle_answer: "ANSWER: 20"        # used by `agent-mark validate`
+verify: "{python} -m unittest ..." # default runs hidden_tests with unittest
+# non-workspace:
 success_rubric: |
-  Response should list GitHub notification emails with sender, subject, and date.
+  ...
 ```
 
-Use exact Composio action names in `expected_tools`. Check Composio docs; don't
-guess. If unsure, leave the list empty and rely on the judge.
+Every workspace task needs `repo/`, and `hidden_tests/` and/or `expected_answer`, plus
+`solution/` (or `oracle_answer`). `agent-mark validate` must pass: the untouched repo
+fails and the reference solution passes. Hidden tests use stdlib `unittest` only.
 
-## Scoring dimensions
+## Judge (non-workspace tasks)
 
-1. **Task success** — 0 or 1, from Gemini judge using the rubric
-2. **Tool correctness** — 1 if any tool in `expected_tools` was called, else 0
-3. **Efficiency** — `min_tool_calls / actual_tool_calls`, capped at 1.0
-4. **Latency** — `total_latency_ms`
-5. **Cost** — `input_tokens + output_tokens` (treat as proxy; we're not pricing here)
-
-Aggregate per toolkit and per difficulty in the report.
-
-## Judge
-
-Gemini 2.5 Flash. Force JSON output. Retry once on parse failure, then mark as
-judge-failed (do NOT default to success or failure — log it).
-
-```
-JUDGE_PROMPT = """Evaluate this agent response.
-
-Task: {prompt}
-Rubric: {rubric}
-Agent's final response: {response}
-
-Respond with JSON only:
-{{"success": 0 or 1, "reasoning": "one sentence"}}
-"""
-```
-
-Before trusting the judge, hand-label 5 trajectories and confirm agreement >= 4/5.
-If lower, iterate on the rubric prompt before running the full suite.
-
-## Adapters
-
-### trustclaw.py
-TrustClaw runs as a Next.js app on localhost:3000. The agent endpoint is a tRPC
-or REST route — inspect the TrustClaw repo to find it. Adapter:
-- Takes a `prompt: str`, returns `Trajectory`
-- Captures tool calls from the response (TrustClaw exposes a ToolLoopAgent loop;
-  find where it logs/yields tool invocations)
-- Measures wall-clock latency around the HTTP call
-- If TrustClaw doesn't expose token counts, set to 0 and note this in docstring
-
-### simple.py
-A ~50-line LangGraph or plain-loop agent using Composio's Python SDK directly.
-This is the fallback if TrustClaw setup blows the time budget. It also serves as
-a baseline for comparison in the final report.
-
-## Tasks (20 total)
-
-5 per toolkit × 4 toolkits = 20 tasks.
-
-Difficulty distribution per toolkit:
-- 2 easy (single tool call, one toolkit)
-- 2 medium (2-3 tool calls, one toolkit)
-- 1 hard (cross-toolkit OR multi-step reasoning)
-
-Toolkits: gmail, github, linear, slack. Pick actions TrustClaw supports — check
-its Composio integrations before writing tasks.
-
-When writing tasks, the prompt must be answerable with READ-ONLY operations
-where possible. Avoid tasks that send emails / create issues during eval runs
-unless using dedicated test accounts. Mutation tasks are valuable but require
-sandbox setup; flag them in the YAML with `mutates: true` and document the
-test account in README.
-
-## Build order (do not deviate)
-
-1. **base.py** — Trajectory + ToolCall + Agent protocol. ~30 lines.
-2. **simple.py** — minimal Composio agent, returns a real Trajectory.
-   Test with one hardcoded prompt before moving on.
-3. **runner.py** — load task YAML, invoke adapter, return raw trajectory.
-4. **scorer.py** — programmatic scores on a Trajectory.
-5. **judge.py** — Gemini rubric judge. Validate against 5 hand-labels.
-6. **One real end-to-end run** with one task and simple.py. Must work before
-   writing more tasks.
-7. **Write 20 task YAMLs.**
-8. **trustclaw.py adapter.** Reuses runner/scorer/judge unchanged.
-9. **report.py** — aggregate runs into markdown.
-10. **Run full suite against simple.py, then TrustClaw.** Compare.
-11. **README** with results table, methodology, and a "what I learned" section.
-
-If TrustClaw setup fails or takes more than 3 hours, ship the harness with
-simple.py results only and note TrustClaw integration as future work. The
-harness is the artifact.
+Gemini 2.5 Flash, forced JSON, one retry, then `judge-failed` (never defaulted).
+Imported lazily so coding runs don't need google-genai.
 
 ## Style conventions
 
 - Python 3.11+, type hints everywhere, dataclasses over dicts for structured data.
-- Pydantic only if validating external input (task YAML loading). Otherwise plain dataclasses.
-- No async unless an adapter needs it. The runner is sequential — we're running 20 tasks, not 20,000.
-- Logging via stdlib `logging`, INFO by default, DEBUG with `--verbose` flag.
-- Errors during a task run must NOT crash the suite. Catch, log, mark task as
-  errored in the report, continue.
-- One file per concern. Don't pre-factor. ~200 lines per file is fine.
+- No async unless an adapter needs it. The runner is sequential.
+- Logging via stdlib `logging`; WARNING by default, DEBUG with `--verbose`.
+- Errors during a task run must NOT crash the suite. Catch, log, mark errored, continue.
+- Harness failures (missing key, binary not found) are errors; agent failures are FAILs.
+- One file per concern. ~200–400 lines per file is fine.
+- Tests: `PI_BINARY=/path/to/pi python -m unittest discover -s tests -t .` must pass.
 
 ## What NOT to build
 
-- No web UI, no dashboard, no FastAPI server. CLI + markdown only.
-- No database. Results are JSON files in `results/`, aggregated into markdown.
-- No retry logic on agent calls beyond the judge. If the agent fails, that's a data point.
-- No multi-model judging or ensemble judging. One judge, validated by hand.
-- No CI/CD. This is a weekend project.
-
-## Submission plan (out of scope for code, but informs design)
-
-When done, the README's "Results" section is the headline. It must include:
-- Aggregate scores per toolkit
-- Aggregate scores per difficulty
-- A "what I learned" section with 3-5 concrete observations (e.g.
-  "agent over-calls search tools by 2x on Gmail", "fails 60% of cross-toolkit tasks")
-- 2-3 example trajectories (one success, one failure) in collapsible details blocks
-
-The README is the marketing surface. Treat it accordingly.
+- No web UI, dashboard, server, or database. CLI + JSON + markdown only.
+- No retry logic on agent calls. If the agent fails, that's a data point.
+- No multi-model or ensemble judging.
 
 ## Things Claude Code should ask before doing
 
-- Adding any dependency beyond: `pyyaml`, `pydantic`, `google-generativeai`, `httpx`, `composio-core`, `langgraph` (only for simple.py)
-- Changing the Trajectory contract once it exists
-- Adding more than the 4 listed toolkits
-- Implementing anything in the "What NOT to build" section
-- Writing more than 20 tasks (more tasks = more time spent, not better signal)
+- Anything that spends money (see Money rule)
+- Adding a runtime dependency beyond `pyyaml`, `httpx` (core) or the `[composio]` extra
+- Changing the Trajectory contract or the adapter protocol
+- Publishing to PyPI or any other public registry
+- Implementing anything in "What NOT to build"
 
 ## Things Claude Code should do without asking
 
-- Add type hints
-- Fix obvious bugs as encountered
-- Improve docstrings on functions being edited
+- Add type hints, fix obvious bugs, improve docstrings on edited functions
 - Add `__init__.py` files where missing
 - Add `.gitignore` entries for results, .env, venv, __pycache__
+- Add or fix tests that run at $0

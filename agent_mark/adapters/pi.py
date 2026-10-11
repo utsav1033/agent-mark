@@ -39,7 +39,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from adapters.base import ToolCall, Trajectory
+from agent_mark.adapters.base import ToolCall, Trajectory
 
 log = logging.getLogger(__name__)
 
@@ -225,7 +225,8 @@ class PiAgent:
                 lines.put(line)
             lines.put(None)
 
-        threading.Thread(target=_pump, daemon=True).start()
+        pump = threading.Thread(target=_pump, daemon=True)
+        pump.start()
 
         killed: str | None = None
         while True:
@@ -254,6 +255,9 @@ class PiAgent:
                 break
 
         proc.wait()
+        pump.join(timeout=5)
+        if proc.stdout:
+            proc.stdout.close()
         total_ms = (time.time() - start) * 1000
         stderr_file.seek(0)
         stderr = stderr_file.read().decode("utf-8", "replace")

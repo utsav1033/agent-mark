@@ -1,0 +1,12 @@
+id: coding_010
+toolkit: coding
+difficulty: hard
+prompt: >
+  free_slots() in scheduler.py returns wrong results for real calendars. Busy
+  intervals arrive unsorted, can overlap or touch each other, and can extend outside
+  the working day. Fix it so it returns every free gap inside [day_start, day_end)
+  that is at least min_minutes long, sorted by start time. Keep the signature.
+workspace: coding_010
+expected_tools: [edit, write, hashline_edit]
+min_tool_calls: 2
+max_tool_calls: 12
